@@ -136,6 +136,12 @@ export default class DBLog extends BasePlugin {
           type: DataTypes.STRING,
           primaryKey: true
         },
+        eosID: {
+          type: DataTypes.STRING
+        },
+        lastIP: {
+          type: DataTypes.STRING
+        },
         lastName: {
           type: DataTypes.STRING
         }
@@ -481,11 +487,13 @@ export default class DBLog extends BasePlugin {
     if (info.attacker)
       await this.models.SteamUser.upsert({
         steamID: info.attacker.steamID,
+        eosID: info.attacker.eosID,
         lastName: info.attacker.name
       });
     if (info.victim)
       await this.models.SteamUser.upsert({
         steamID: info.victim.steamID,
+        eosID: info.attacker.eosID,
         lastName: info.victim.name
       });
 
@@ -511,11 +519,13 @@ export default class DBLog extends BasePlugin {
     if (info.attacker)
       await this.models.SteamUser.upsert({
         steamID: info.attacker.steamID,
+        eosID: info.attacker.eosID,
         lastName: info.attacker.name
       });
     if (info.victim)
       await this.models.SteamUser.upsert({
         steamID: info.victim.steamID,
+        eosID: info.victim.eosID,
         lastName: info.victim.name
       });
 
@@ -542,16 +552,19 @@ export default class DBLog extends BasePlugin {
     if (info.attacker)
       await this.models.SteamUser.upsert({
         steamID: info.attacker.steamID,
+        eosID: info.attacker.eosID,
         lastName: info.attacker.name
       });
     if (info.victim)
       await this.models.SteamUser.upsert({
         steamID: info.victim.steamID,
+        eosID: info.victim.eosID,
         lastName: info.victim.name
       });
     if (info.reviver)
       await this.models.SteamUser.upsert({
         steamID: info.reviver.steamID,
+        eosID: info.reviver.eosID,
         lastName: info.reviver.name
       });
 
