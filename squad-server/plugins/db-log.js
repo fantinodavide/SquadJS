@@ -398,6 +398,7 @@ export default class DBLog extends BasePlugin {
     this.onTickRate = this.onTickRate.bind(this);
     this.onUpdatedA2SInformation = this.onUpdatedA2SInformation.bind(this);
     this.onNewGame = this.onNewGame.bind(this);
+    this.onPlayerConnected = this.onPlayerConnected.bind(this);
     this.onPlayerWounded = this.onPlayerWounded.bind(this);
     this.onPlayerDied = this.onPlayerDied.bind(this);
     this.onPlayerRevived = this.onPlayerRevived.bind(this);
@@ -433,6 +434,7 @@ export default class DBLog extends BasePlugin {
     this.server.on('TICK_RATE', this.onTickRate);
     this.server.on('UPDATED_A2S_INFORMATION', this.onUpdatedA2SInformation);
     this.server.on('NEW_GAME', this.onNewGame);
+    this.server.on('PLAYER_CONNECTED', this.onPlayerConnected);
     this.server.on('PLAYER_WOUNDED', this.onPlayerWounded);
     this.server.on('PLAYER_DIED', this.onPlayerDied);
     this.server.on('PLAYER_REVIVED', this.onPlayerRevived);
@@ -442,6 +444,7 @@ export default class DBLog extends BasePlugin {
     this.server.removeEventListener('TICK_RATE', this.onTickRate);
     this.server.removeEventListener('UPDATED_A2S_INFORMATION', this.onTickRate);
     this.server.removeEventListener('NEW_GAME', this.onNewGame);
+    this.server.removeEventListener('PLAYER_CONNECTED', this.onPlayerConnected);
     this.server.removeEventListener('PLAYER_WOUNDED', this.onPlayerWounded);
     this.server.removeEventListener('PLAYER_DIED', this.onPlayerDied);
     this.server.removeEventListener('PLAYER_REVIVED', this.onPlayerRevived);
@@ -483,17 +486,32 @@ export default class DBLog extends BasePlugin {
     });
   }
 
+  async onPlayerConnected(info) {
+    const steamUser = await this.models.SteamUser.findOne({ where: { steamID: player.steamID } });
+
+    if (steamUser) {
+      await this.models.SteamUser.update(
+        { eosID: info.eosID, lastIP: info.ip, lastName: player.name },
+        { where: { steamID: player.steamID } }
+      );
+    }
+    if (!steamUser) {
+      await this.models.SteamUser.create(
+        { steamID: player.steamID, eosID: info.eosID, lastIP: info.ip, lastName: player.name }
+      );
+      this.verbose(1, `${player.steamID} has been added to the database.`);
+    }
+  }
+
   async onPlayerWounded(info) {
     if (info.attacker)
       await this.models.SteamUser.upsert({
         steamID: info.attacker.steamID,
-        eosID: info.attacker.eosID,
         lastName: info.attacker.name
       });
     if (info.victim)
       await this.models.SteamUser.upsert({
         steamID: info.victim.steamID,
-        eosID: info.attacker.eosID,
         lastName: info.victim.name
       });
 
@@ -519,13 +537,11 @@ export default class DBLog extends BasePlugin {
     if (info.attacker)
       await this.models.SteamUser.upsert({
         steamID: info.attacker.steamID,
-        eosID: info.attacker.eosID,
         lastName: info.attacker.name
       });
     if (info.victim)
       await this.models.SteamUser.upsert({
         steamID: info.victim.steamID,
-        eosID: info.victim.eosID,
         lastName: info.victim.name
       });
 
@@ -552,19 +568,16 @@ export default class DBLog extends BasePlugin {
     if (info.attacker)
       await this.models.SteamUser.upsert({
         steamID: info.attacker.steamID,
-        eosID: info.attacker.eosID,
         lastName: info.attacker.name
       });
     if (info.victim)
       await this.models.SteamUser.upsert({
         steamID: info.victim.steamID,
-        eosID: info.victim.eosID,
         lastName: info.victim.name
       });
     if (info.reviver)
       await this.models.SteamUser.upsert({
         steamID: info.reviver.steamID,
-        eosID: info.reviver.eosID,
         lastName: info.reviver.name
       });
 
