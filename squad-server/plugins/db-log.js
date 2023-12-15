@@ -499,7 +499,7 @@ export default class DBLog extends BasePlugin {
       await this.models.SteamUser.create(
         { steamID: info.player.steamID, eosID: info.eosID, lastIP: info.ip, lastName: info.player.name }
       );
-      this.verbose(1, `${player.steamID} has been added to the database.`);
+      this.verbose(1, `${info.player.steamID} has been added to the database.`);
     }
   }
 
