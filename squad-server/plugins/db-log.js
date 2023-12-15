@@ -487,17 +487,17 @@ export default class DBLog extends BasePlugin {
   }
 
   async onPlayerConnected(info) {
-    const steamUser = await this.models.SteamUser.findOne({ where: { steamID: player.steamID } });
+    const steamUser = await this.models.SteamUser.findOne({ where: { steamID: info.player.steamID } });
 
     if (steamUser) {
       await this.models.SteamUser.update(
-        { eosID: info.eosID, lastIP: info.ip, lastName: player.name },
-        { where: { steamID: player.steamID } }
+        { eosID: info.eosID, lastIP: info.ip, lastName: info.player.name },
+        { where: { steamID: info.player.steamID } }
       );
     }
     if (!steamUser) {
       await this.models.SteamUser.create(
-        { steamID: player.steamID, eosID: info.eosID, lastIP: info.ip, lastName: player.name }
+        { steamID: info.player.steamID, eosID: info.eosID, lastIP: info.ip, lastName: info.player.name }
       );
       this.verbose(1, `${player.steamID} has been added to the database.`);
     }
