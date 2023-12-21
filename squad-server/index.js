@@ -458,9 +458,12 @@ export default class SquadServer extends EventEmitter {
       const nextMap = await this.rcon.getNextMap();
       const nextMapToBeVoted = nextMap.layer === 'To be voted';
 
-      if (currentLayer?.name !== currentMap.layer){
-        const rconlayer = await Layers.getLayerByName(currentMap.layer);
-        if (rconlayer){
+      if (currentLayer?.name !== currentMap.layer) {
+        let rconlayer = await Layers.getLayerByName(currentMap.layer);
+        if (!rconlayer) rconlayer = await Layers.getLayerByCondition((l) => l.layerid === currentMap.layer);
+        if (!rconlayer) rconlayer = await Layers.getLayerByClassname(currentMap.layer);
+
+        if (rconlayer && currentMap.layer !== "Jensen's Training Range") {
           currentLayer = rconlayer;
         }
       }
@@ -544,7 +547,7 @@ export default class SquadServer extends EventEmitter {
       this.gameVersion = info.gameVersion;
 
       if (info.currentLayer !== serverlayer?.layerid) {
-        const a2slayer = await Layers.getLayerById(info.currentLayer);
+        const a2slayer = await Layers.getLayerByCondition((l) => l.layerid === info.currentLayer);
         this.currentLayer = a2slayer ? a2slayer : this.currentLayer;
       }
       if (!this.nextLayer) this.nextLayer = Layers.getLayerByClassname(info.nextLayer);
