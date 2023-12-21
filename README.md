@@ -210,7 +210,7 @@ Interested in creating your own plugin? [See more here](./squad-server/plugins/r
            <h6>Description</h6>
            <p>Message SquadJS will send to players warning them they will be kicked</p>
            <h6>Default</h6>
-           <pre><code>Join a squad, you are are unassigned and will be kicked</code></pre></li>
+           <pre><code>Join a squad, you are unassigned and will be kicked</code></pre></li>
 <li><h4>kickMessage</h4>
            <h6>Description</h6>
            <p>Message to send to players when they are kicked</p>
@@ -808,6 +808,18 @@ Grafana:
            <p>Frequency of the broadcasts in milliseconds.</p>
            <h6>Default</h6>
            <pre><code>300000</code></pre></li></ul>
+        </details>
+
+<details>
+          <summary>PersistentEOSIDtoSteamID</summary>
+          <h2>PersistentEOSIDtoSteamID</h2>
+          <p>Stores into a DB every association of SteamID-EOSID</p>
+          <h3>Options</h3>
+          <ul><li><h4>database (Required)</h4>
+           <h6>Description</h6>
+           <p>The Sequelize connector.</p>
+           <h6>Default</h6>
+           <pre><code>sqlite</code></pre></li></ul>
         </details>
 
 <details>

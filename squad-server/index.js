@@ -1,7 +1,6 @@
 import EventEmitter from 'events';
 
 import axios from 'axios';
-import Gamedig from 'gamedig';
 
 import Logger from 'core/logger';
 import { SQUADJS_API_DOMAIN } from 'core/constants';
@@ -19,7 +18,7 @@ export default class SquadServer extends EventEmitter {
   constructor(options = {}) {
     super();
 
-    for (const option of ['host', 'queryPort'])
+    for (const option of ['host'])
       if (!(option in options)) throw new Error(`${option} must be specified.`);
 
     this.id = options.id;
@@ -73,12 +72,12 @@ export default class SquadServer extends EventEmitter {
     this.admins = await fetchAdminLists(this.options.adminLists);
 
     await this.rcon.connect();
-    await this.logParser.watch();
-
     await this.updateSquadList();
-    await this.updatePlayerList();
+    await this.updatePlayerList(this);
     await this.updateLayerInformation();
     await this.updateA2SInformation();
+
+    await this.logParser.watch();
 
     Logger.verbose('SquadServer', 1, `Watching ${this.serverName}...`);
 
@@ -95,7 +94,10 @@ export default class SquadServer extends EventEmitter {
       host: this.options.rconHost || this.options.host,
       port: this.options.rconPort,
       password: this.options.rconPassword,
-      autoReconnectInterval: this.options.rconAutoReconnectInterval
+      autoReconnectInterval: this.options.rconAutoReconnectInterval,
+      dumpRconResponsesToFile: this.options.dumpRconResponsesToFile,
+      passThroughPort: this.options.rconPassThroughPort,
+      passThrough: this.options.rconPassThrough
     });
 
     this.rcon.on('CHAT_MESSAGE', async (data) => {
@@ -154,9 +156,12 @@ export default class SquadServer extends EventEmitter {
     });
 
     this.rcon.on('SQUAD_CREATED', async (data) => {
-      data.player = await this.getPlayerBySteamID(data.playerSteamID, true);
+      data.player = await this.getPlayerByEOSID(data.playerEOSID, true);
+      data.player.squadID = data.squadID;
+
       delete data.playerName;
       delete data.playerSteamID;
+      delete data.playerEOSID;
 
       this.emit('SQUAD_CREATED', data);
     });
@@ -207,7 +212,15 @@ export default class SquadServer extends EventEmitter {
     });
 
     this.logParser.on('PLAYER_CONNECTED', async (data) => {
-      data.player = await this.getPlayerBySteamID(data.steamID);
+      Logger.verbose(
+        'SquadServer',
+        1,
+        `Player connected ${data.playerSuffix} - SteamID: ${data.steamID} - EOSID: ${data.eosID}`
+      );
+
+      this.rcon.addIds(data.steamID, data.eosID);
+
+      data.player = await this.getPlayerByEOSID(data.eosID);
       if (data.player) data.player.suffix = data.playerSuffix;
 
       delete data.steamID;
@@ -217,7 +230,7 @@ export default class SquadServer extends EventEmitter {
     });
 
     this.logParser.on('PLAYER_DISCONNECTED', async (data) => {
-      data.player = await this.getPlayerBySteamID(data.steamID);
+      data.player = await this.getPlayerByEOSID(data.playerEOSID);
 
       delete data.steamID;
 
@@ -226,12 +239,16 @@ export default class SquadServer extends EventEmitter {
 
     this.logParser.on('PLAYER_DAMAGED', async (data) => {
       data.victim = await this.getPlayerByName(data.victimName);
-      data.attacker = await this.getPlayerByName(data.attackerName);
+      data.attacker = await this.getPlayerByEOSID(data.attackerEOSID);
 
-      if (data.victim && data.attacker)
+      if (data.attacker && !data.attacker.playercontroller && data.attackerController)
+        data.attacker.playercontroller = data.attackerController;
+
+      if (data.victim && data.attacker) {
         data.teamkill =
           data.victim.teamID === data.attacker.teamID &&
           data.victim.steamID !== data.attacker.steamID;
+      }
 
       delete data.victimName;
       delete data.attackerName;
@@ -241,7 +258,7 @@ export default class SquadServer extends EventEmitter {
 
     this.logParser.on('PLAYER_WOUNDED', async (data) => {
       data.victim = await this.getPlayerByName(data.victimName);
-      data.attacker = await this.getPlayerByName(data.attackerName);
+      data.attacker = await this.getPlayerByEOSID(data.attackerEOSID);
       if (!data.attacker)
         data.attacker = await this.getPlayerByController(data.attackerPlayerController);
 
@@ -259,7 +276,7 @@ export default class SquadServer extends EventEmitter {
 
     this.logParser.on('PLAYER_DIED', async (data) => {
       data.victim = await this.getPlayerByName(data.victimName);
-      data.attacker = await this.getPlayerByName(data.attackerName);
+      data.attacker = await this.getPlayerByEOSID(data.attackerEOSID);
       if (!data.attacker)
         data.attacker = await this.getPlayerByController(data.attackerPlayerController);
 
@@ -275,9 +292,9 @@ export default class SquadServer extends EventEmitter {
     });
 
     this.logParser.on('PLAYER_REVIVED', async (data) => {
-      data.victim = await this.getPlayerByName(data.victimName);
-      data.attacker = await this.getPlayerByName(data.attackerName);
-      data.reviver = await this.getPlayerByName(data.reviverName);
+      data.victim = await this.getPlayerByEOSID(data.victimEOSID);
+      data.attacker = await this.getPlayerByEOSID(data.attackerEOSID);
+      data.reviver = await this.getPlayerByEOSID(data.reviverEOSID);
 
       delete data.victimName;
       delete data.attackerName;
@@ -287,7 +304,7 @@ export default class SquadServer extends EventEmitter {
     });
 
     this.logParser.on('PLAYER_POSSESS', async (data) => {
-      data.player = await this.getPlayerByNameSuffix(data.playerSuffix);
+      data.player = await this.getPlayerByEOSID(data.playerEOSID);
       if (data.player) data.player.possessClassname = data.possessClassname;
 
       delete data.playerSuffix;
@@ -296,7 +313,7 @@ export default class SquadServer extends EventEmitter {
     });
 
     this.logParser.on('PLAYER_UNPOSSESS', async (data) => {
-      data.player = await this.getPlayerByNameSuffix(data.playerSuffix);
+      data.player = await this.getPlayerByEOSID(data.playerEOSID);
 
       delete data.playerSuffix;
 
@@ -310,6 +327,23 @@ export default class SquadServer extends EventEmitter {
     this.logParser.on('TICK_RATE', (data) => {
       this.emit('TICK_RATE', data);
     });
+
+    this.logParser.on('CLIENT_EXTERNAL_ACCOUNT_INFO', (data) => {
+      this.rcon.addIds(data.steamID, data.eosID);
+    });
+    // this.logParser.on('CLIENT_CONNECTED', (data) => {
+    //   Logger.verbose("SquadServer", 1, `Client connected. Connection: ${data.connection} - SteamID: ${data.steamID}`)
+    // })
+    // this.logParser.on('CLIENT_LOGIN_REQUEST', (data) => {
+    //   Logger.verbose("SquadServer", 1, `Login request. ChainID: ${data.chainID} - Suffix: ${data.suffix} - EOSID: ${data.eosID}`)
+
+    // })
+    // this.logParser.on('RESOLVED_EOS_ID', (data) => {
+    //   Logger.verbose("SquadServer", 1, `Resolved EOSID. ChainID: ${data.chainID} - Suffix: ${data.suffix} - EOSID: ${data.eosID}`)
+    // })
+    // this.logParser.on('ADDING_CLIENT_CONNECTION', (data) => {
+    //   Logger.verbose("SquadServer", 1, `Adding client connection`, data)
+    // })
   }
 
   async restartLogParser() {
@@ -352,7 +386,7 @@ export default class SquadServer extends EventEmitter {
       }
 
       const players = [];
-      for (const player of await this.rcon.getListPlayers())
+      for (const player of await this.rcon.getListPlayers(this))
         players.push({
           ...oldPlayerInfo[player.steamID],
           ...player,
@@ -379,6 +413,13 @@ export default class SquadServer extends EventEmitter {
             newSquadID: player.squadID
           });
       }
+
+      if (this.a2sPlayerCount > 0 && players.length === 0)
+        Logger.verbose(
+          'SquadServer',
+          1,
+          `Real Player Count: ${this.a2sPlayerCount} but loaded ${players.length}`
+        );
 
       this.emit('UPDATED_PLAYER_INFORMATION');
     } catch (err) {
@@ -423,7 +464,7 @@ export default class SquadServer extends EventEmitter {
           currentLayer = rconlayer;
         }
       }
-      
+
       const nextLayer = nextMapToBeVoted ? null : await Layers.getLayerByName(nextMap.layer);
 
       if (this.layerHistory.length === 0) {
@@ -454,37 +495,48 @@ export default class SquadServer extends EventEmitter {
     Logger.verbose('SquadServer', 1, `Updating A2S information...`);
 
     try {
+      // const data = await Gamedig.query({
+      //   type: 'squad',
+      //   host: this.options.host,
+      //   port: this.options.queryPort
+      // });
       const serverlayer = this.currentLayer;
-      const data = await Gamedig.query({
-        type: 'squad',
-        host: this.options.host,
-        port: this.options.queryPort
-      });
+      const rawData = await this.rcon.execute(`ShowServerInfo`);
+      Logger.verbose('SquadServer', 3, `A2S raw data`, rawData);
+      const data = JSON.parse(rawData);
+      Logger.verbose('SquadServer', 2, `A2S data`, JSON.data);
+      // Logger.verbose("SquadServer", 1, `A2S data`, JSON.stringify(data, null, 2))
 
       const info = {
-        raw: data.raw,
-        serverName: data.name,
+        raw: data,
+        serverName: data.ServerName_s,
 
-        maxPlayers: parseInt(data.maxplayers),
-        publicSlots: parseInt(data.raw.rules.NUMPUBCONN),
-        reserveSlots: parseInt(data.raw.rules.NUMPRIVCONN),
+        maxPlayers: parseInt(data.MaxPlayers),
+        publicQueueLimit: parseInt(data.PublicQueueLimit_I),
+        reserveSlots: parseInt(data.PlayerReserveCount_I),
 
-        a2sPlayerCount: parseInt(data.raw.rules.PlayerCount_i),
-        publicQueue: parseInt(data.raw.rules.PublicQueue_i),
-        reserveQueue: parseInt(data.raw.rules.ReservedQueue_i),
+        playerCount: parseInt(data.PlayerCount_I),
+        a2sPlayerCount: parseInt(data.PlayerCount_I),
+        publicQueue: parseInt(data.PublicQueue_I),
+        reserveQueue: parseInt(data.ReservedQueue_I),
 
-        matchTimeout: parseFloat(data.raw.rules.MatchTimeout_f),
-        gameVersion: data.raw.version,
-        currentLayer: data.map
+        currentLayer: data.MapName_s,
+        nextLayer: data.NextLayer_s,
+
+        teamOne: data.TeamOne_s?.replace(new RegExp(data.MapName_s, 'i'), '') || '',
+        teamTwo: data.TeamTwo_s?.replace(new RegExp(data.MapName_s, 'i'), '') || '',
+
+        matchTimeout: parseFloat(data.MatchTimeout_d),
+        gameVersion: data.GameVersion_s
       };
 
       this.serverName = info.serverName;
 
       this.maxPlayers = info.maxPlayers;
-      this.publicSlots = info.publicSlots;
+      this.publicSlots = info.maxPlayers - info.reserveSlots;
       this.reserveSlots = info.reserveSlots;
 
-      this.a2sPlayerCount = info.a2sPlayerCount;
+      this.a2sPlayerCount = info.playerCount;
       this.publicQueue = info.publicQueue;
       this.reserveQueue = info.reserveQueue;
 
@@ -495,8 +547,10 @@ export default class SquadServer extends EventEmitter {
         const a2slayer = await Layers.getLayerById(info.currentLayer);
         this.currentLayer = a2slayer ? a2slayer : this.currentLayer;
       }
+      if (!this.nextLayer) this.nextLayer = Layers.getLayerByClassname(info.nextLayer);
 
       this.emit('UPDATED_A2S_INFORMATION', info);
+      this.emit('UPDATED_SERVER_INFORMATION', info);
     } catch (err) {
       Logger.verbose('SquadServer', 1, 'Failed to update A2S information.', err);
     }
@@ -554,6 +608,10 @@ export default class SquadServer extends EventEmitter {
 
   async getPlayerBySteamID(steamID, forceUpdate) {
     return this.getPlayerByCondition((player) => player.steamID === steamID, forceUpdate);
+  }
+
+  async getPlayerByEOSID(eosID, forceUpdate) {
+    return this.getPlayerByCondition((player) => player.EOSID === eosID, forceUpdate);
   }
 
   async getPlayerByName(name, forceUpdate) {
